@@ -53,16 +53,17 @@ class MemoryAttentionModule(nn.Module):
 
         # Forget mechanism
         forget_score = 1.1 * self.normalize_commit(self.forget_net(inp_mem_stack))
-        memory *= forget_score
+        new_memory = memory.clone()
+        new_memory *= forget_score
 
         # Remember mechanism
         remember_res = self.remember_net(inp_mem_stack)
         modification_to_mem = remember_res[:, :, :-1]
         modification_scale = remember_res[:, :, -1].unsqueeze(-1)
 
-        memory += modification_scale * modification_to_mem
+        new_memory += modification_scale * modification_to_mem
 
-        return output, memory
+        return output, new_memory
 
 if __name__ == '__main__':
     input_size = 3
@@ -77,3 +78,4 @@ if __name__ == '__main__':
     out, mem = mam(inp, mem)
 
     print(out.size())
+    print(mem.size())
