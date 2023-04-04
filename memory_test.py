@@ -17,7 +17,8 @@ class MAMnet(nn.Module):
     def forward(self, x, memory):
         x = self.relu(self.linear_1(x))
         x, memory = self.mam(x, memory)
-        x = self.relu(self.linear_2(self.relu(x)))
+        x = self.relu(x)
+        x = self.relu(self.linear_2(x))
         return x, memory
 
 class LSTMnet(nn.Module):
@@ -31,7 +32,8 @@ class LSTMnet(nn.Module):
     def forward(self, x, hidden):
         x = self.relu(self.linear_1(x))
         x, hidden = self.lstm(x, hidden)
-        x = self.relu(self.linear_2(self.relu(x)))
+        x = self.relu(x)
+        x = self.relu(self.linear_2(x))
         return x, hidden
 
 def main():
@@ -47,8 +49,10 @@ def main():
     lstm = LSTMnet(size, hidden_size)
     mam = MAMnet(size, hidden_size)
 
-    epochs = 10000
-    batch_size = 128
+    epochs = 100
+    batch_size = 1024
+    lstm_max_grad = 100
+    mam_max_grad = 10
     criterion = nn.MSELoss()
     optimizer = optim.AdamW((*lstm.parameters(), *mam.parameters()), lr=1e-3)
 
@@ -64,27 +68,45 @@ def main():
         for i in range(seq_length + 1):
             lstm_last, lstm_hidden = lstm(batch_seq[:, :, i].unsqueeze(1), lstm_hidden)
             mam_last, mam_memory = mam(batch_seq[:, :, i], mam_memory)
+            # print(lstm_last)
+            # print(mam_last)
+
+        # if lstm_last.isnan().any() or mam_last.isnan().any():
+        #     print(batch_seq)
+        #     print(lstm_last)
+        #     print(mam_last)
+        #     error(':)')
 
         lstm_loss = torch.zeros(1)
         mam_loss = torch.zeros(1)
         for _ in range(seq_repeats):
             for i in range(seq_length):
-                lstm_last, lstm_hidden = lstm(lstm_last, lstm_hidden)
-                mam_last, mam_memory = mam(mam_last, mam_memory)
-
                 lstm_loss += criterion(lstm_last.squeeze(), batch_seq[:, :, i])
                 mam_loss += criterion(mam_last, batch_seq[:, :, i])
 
+                lstm_last, lstm_hidden = lstm(batch_seq[:, :, i].unsqueeze(1), lstm_hidden)
+                mam_last, mam_memory = mam(batch_seq[:, :, i], mam_memory)
+                # print(lstm_last)
+                # print(mam_last)
+
+        lstm_loss += criterion(lstm_last.squeeze(), batch_seq[:, :, -2])
+        mam_loss += criterion(mam_last, batch_seq[:, :, -2])
         total_loss = lstm_loss + mam_loss
         lstm_history[ep] = lstm_loss.item() / (seq_length * seq_repeats * size)
         mam_history[ep] = mam_loss.item() / (seq_length * seq_repeats * size)
 
         optimizer.zero_grad()
         total_loss.backward()
+        torch.nn.utils.clip_grad_norm_(lstm.parameters(), lstm_max_grad)
+        torch.nn.utils.clip_grad_norm_(mam.parameters(), mam_max_grad)
         optimizer.step()
 
-    plt.plot(moving_average(lstm_history))
-    plt.plot(moving_average(mam_history))
+    # plt.plot(moving_average(lstm_history))
+    # plt.plot(moving_average(mam_history))
+    print(lstm_history)
+    print(mam_history)
+    plt.plot(torch.arange(epochs), lstm_history)
+    plt.plot(torch.arange(epochs), mam_history)
     plt.legend(['LSTM', 'MAM'])
     plt.show()
 

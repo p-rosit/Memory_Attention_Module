@@ -52,7 +52,8 @@ class MemoryAttentionModule(nn.Module):
         inp_mem_stack = torch.cat((x, memory), dim=2)
 
         # Forget mechanism
-        forget_score = 1.1 * self.normalize_commit(self.forget_net(inp_mem_stack))
+        # forget_score = 1.1 * self.normalize_commit(self.forget_net(inp_mem_stack))
+        forget_score = self.normalize_commit(self.forget_net(inp_mem_stack))
         new_memory = memory.clone()
         new_memory *= forget_score
 
