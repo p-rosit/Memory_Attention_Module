@@ -17,8 +17,10 @@ class MLP(nn.Module):
         return self.network(x)
 
 class MemoryAttentionModule(nn.Module):
-    def __init__(self, input_size, output_size, memory_size=4):
+    def __init__(self, input_size, output_size, memory_size=4, max_memory_magnitude=10):
         super().__init__()
+        self.max_memory_magnitude = max_memory_magnitude
+
         self.normalize_commit = nn.Sigmoid()
         self.forget_net = MLP(input_size + memory_size, [], 1)
         self.remember_net = MLP(input_size + memory_size, [], memory_size + 1)
@@ -48,23 +50,32 @@ class MemoryAttentionModule(nn.Module):
         output = self.layer(intermediate)
 
         # Forgetting and committing to memory
-        x = x.repeat(1, memory.size(1), 1)
+        x = 1e-3 * x.repeat(1, memory.size(1), 1)
         inp_mem_stack = torch.cat((x, memory), dim=2)
 
         # Forget mechanism
         # forget_score = 1.1 * self.normalize_commit(self.forget_net(inp_mem_stack))
         forget_score = self.normalize_commit(self.forget_net(inp_mem_stack))
         new_memory = memory.clone()
+        # print(new_memory.size())
+        # print(forget_score.size())
         new_memory *= forget_score
 
         # Remember mechanism
         remember_res = self.remember_net(inp_mem_stack)
         modification_to_mem = remember_res[:, :, :-1]
         modification_scale = remember_res[:, :, -1].unsqueeze(-1)
+        # print(modification_scale)
+        # print(modification_to_mem)
+        # print(modification_to_mem.size())
+        # print(modification_scale.size())
 
         new_memory += modification_scale * modification_to_mem
+        new_memory[new_memory < -self.max_memory_magnitude] = -self.max_memory_magnitude
+        new_memory[self.max_memory_magnitude < new_memory] = self.max_memory_magnitude
 
-        return output, new_memory
+        # error(':)')
+        return output, new_memory, new_memory.abs().sum().log().item()
 
 if __name__ == '__main__':
     input_size = 3
